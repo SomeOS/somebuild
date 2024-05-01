@@ -1,0 +1,19 @@
+[info]
+name = 'xz'
+description = 'XZ Utils'
+homepage = 'https://tukaani.org/xz'
+licences = [
+    'GPL-2.0-or-later',
+    'GPL-3.0-or-later',
+    'LGPL-2.1-or-later'
+]
+version = '5.4.6'
+release = 0
+
+[build]
+setup = '''
+    %configure --disable-static --disable-rpath
+'''
+build = '''
+    %make
+'''
