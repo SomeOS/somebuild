@@ -10,7 +10,7 @@ licences = [
 
 [source]
 version = "5.4.6"
-url = "https://github.com/tukaani-project/xz/releases/download/v$version/xz-$version.tar.zst"
+url = "https://github.com/tukaani-project/xz/releases/download/v5.4.6/xz-5.4.6.tar.zst"
 release = 0
 
 [build.options]

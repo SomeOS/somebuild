@@ -4,8 +4,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-compression = { version = "0.4.9", features = ["futures-io", "tokio","all"] }
+async-tar = "0.4.2"
 clap = { version = "4.5.4", features = ["derive"] }
 env_logger = "0.11.3"
+futures = "0.3.30"
+indicatif = "0.17.8"
+indicatif-log-bridge = "0.2.2"
 log = "0.4.21"
+reqwest = { version = "0.12.4", features = ["stream"] }
 serde = { version = "1.0.200", features = ["derive"] }
+tokio = { version = "1.37.0", features = ["full"] }
 toml = "0.8.12"
