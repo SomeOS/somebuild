@@ -1,19 +1,28 @@
-[info]
-name = 'xz'
-description = 'XZ Utils'
-homepage = 'https://tukaani.org/xz'
+[general]
+name = "xz"
+description = "XZ Utils"
+homepage = "https://tukaani.org/xz"
 licences = [
-    'GPL-2.0-or-later',
-    'GPL-3.0-or-later',
-    'LGPL-2.1-or-later'
+    "GPL-2.0-or-later",
+    "GPL-3.0-or-later",
+    "LGPL-2.1-or-later"
 ]
-version = '5.4.6'
+
+[source]
+version = "5.4.6"
+url = "https://github.com/tukaani-project/xz/releases/download/v$version/xz-$version.tar.zst"
 release = 0
 
+[build.options]
+compiler = "clang"
+withLTO = true
+withPGO = true
+withBOLT = true
+
 [build]
-setup = '''
+setup = """
     %configure --disable-static --disable-rpath
-'''
-build = '''
+"""
+build = """
     %make
-'''
+"""
