@@ -16,8 +16,6 @@ release = 0
 [build.options]
 compiler = "clang"
 with_lto = true
-with_pgo = true
-with_bolt = true
 
 [build]
 setup = """
