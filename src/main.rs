@@ -88,7 +88,7 @@ async fn main() {
         "{spinner:.green} [{elapsed}] {wide_bar:.cyan/blue} {bytes}/{total_bytes} {msg} ({eta})",
     )
     .unwrap()
-    .progress_chars("##-");
+    .progress_chars("#>-");
 
     let bar = multibar.add(ProgressBar::new(0));
     bar.set_style(sty.clone());
