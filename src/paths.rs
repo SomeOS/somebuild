@@ -1,8 +1,6 @@
-
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
-use std::path::Component;
-
 
 pub fn normalize_path(path: &Path) -> PathBuf {
     let mut components = path.components().peekable();
