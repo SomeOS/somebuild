@@ -35,6 +35,16 @@ async fn main() {
         .format_target(false)
         .build();
 
+    let multibar: MultiProgress = MultiProgress::new();
+    LogWrapper::new(multibar.clone(), logger)
+        .try_init()
+        .unwrap();
+    let sty = ProgressStyle::with_template(
+        "{spinner:.green} [{elapsed}] {wide_bar:.cyan/blue} {bytes}/{total_bytes} {msg} ({eta})",
+    )
+    .unwrap()
+    .progress_chars("#>-");
+
     let args = Args::parse();
 
     let input = Path::new(&args.input);
@@ -78,17 +88,6 @@ async fn main() {
         "Package:\t{}-{}_{}",
         config.general.name, config.source.version, config.source.release
     );
-
-    let multibar: MultiProgress = MultiProgress::new();
-    LogWrapper::new(multibar.clone(), logger)
-        .try_init()
-        .unwrap();
-
-    let sty = ProgressStyle::with_template(
-        "{spinner:.green} [{elapsed}] {wide_bar:.cyan/blue} {bytes}/{total_bytes} {msg} ({eta})",
-    )
-    .unwrap()
-    .progress_chars("#>-");
 
     let bar = multibar.add(ProgressBar::new(0));
     bar.set_style(sty.clone());
