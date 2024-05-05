@@ -1,9 +1,12 @@
 mod somebuild_config;
 
 use clap::Parser;
-use futures::{io::BufReader, TryStreamExt};
+use futures::{io::BufReader, StreamExt, TryStreamExt};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif_log_bridge::LogWrapper;
 use log::error;
 use std::{
+    cmp::min,
     fs::{self, File},
     io::{Error, ErrorKind, Read},
     path::Path,
@@ -27,10 +30,10 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    env_logger::builder()
+    let logger = env_logger::Builder::from_env(env_logger::Env::default())
         .format_timestamp(None)
         .format_target(false)
-        .init();
+        .build();
 
     let args = Args::parse();
 
@@ -76,10 +79,53 @@ async fn main() {
         config.general.name, config.source.version, config.source.release
     );
 
-    let response = reqwest::get(config.source.url).await.unwrap();
+    let multibar: MultiProgress = MultiProgress::new();
+    LogWrapper::new(multibar.clone(), logger)
+        .try_init()
+        .unwrap();
 
-    let reader = response
-        .bytes_stream()
+    let sty = ProgressStyle::with_template(
+        "{spinner:.green} [{elapsed}] {wide_bar:.cyan/blue} {bytes}/{total_bytes} {msg} ({eta})",
+    )
+    .unwrap()
+    .progress_chars("##-");
+
+    let bar = multibar.add(ProgressBar::new(0));
+    bar.set_style(sty.clone());
+    bar.set_message(format!(
+        "Starting {}-{}",
+        config.general.name, config.source.version
+    ));
+
+    let response = reqwest::Client::new()
+        .get(&config.source.url)
+        .send()
+        .await
+        .unwrap();
+
+    let total_size = response.content_length().unwrap_or(0);
+
+    bar.set_length(total_size);
+    bar.set_message(format!(
+        "Downloading {}-{}",
+        config.general.name, config.source.version
+    ));
+
+    let mut downloaded: u64 = 0;
+    let mut stream = response.bytes_stream();
+    while let Some(item) = stream.next().await {
+        let chunk = item.or(Err("Error while downloading file")).unwrap();
+        let new = min(downloaded + (chunk.len() as u64), total_size);
+        downloaded = new;
+        bar.set_position(new);
+    }
+
+    bar.finish_with_message(format!(
+        "Finished downloading {}-{}",
+        config.general.name, config.source.version
+    ));
+
+    let reader = stream
         .map_err(|e| Error::new(ErrorKind::Other, e))
         .into_async_read();
 
