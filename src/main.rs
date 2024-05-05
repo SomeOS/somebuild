@@ -1,5 +1,5 @@
 mod somebuild_config;
-
+mod paths;
 use clap::Parser;
 use futures::{io::BufReader, StreamExt, TryStreamExt};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -14,6 +14,7 @@ use std::{
 };
 
 use crate::somebuild_config::Config;
+use crate::paths::normalize_path;
 
 /// A package builder for Some OS
 #[derive(Parser, Debug)]
@@ -50,17 +51,14 @@ async fn main() {
     let input = Path::new(&args.input);
     let output = Path::new(&args.output);
 
-    if !input.exists() {
-        error!("Input path \"{}\" does not exist!", args.input);
-        exit(1);
-    }
-    if !output.exists() {
-        error!("Output path \"{}\" does not exist!", args.output);
-        exit(1);
-    }
-
-    let input = fs::canonicalize(input).unwrap();
-    let output = fs::canonicalize(output).unwrap();
+    let input =  match fs::canonicalize(input) {
+        Ok(input)=> input,
+        Err(error)=> {error!("Failed reading input path: \"{}\"\n\t with error \"{}\"", normalize_path(input).display(), error); exit(1);},
+    };
+    let output = match fs::canonicalize(output) {
+        Ok(output)=> output,
+        Err(error)=> {error!("Failed reading output path: \"{}\"\n\t with error \"{}\"", normalize_path(output).display(), error); exit(1);},
+    };
 
     if input.is_file() {
         error!("Input is a file not a directory!");
