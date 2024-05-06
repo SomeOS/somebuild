@@ -1,7 +1,6 @@
 mod paths;
 mod somebuild_config;
 use clap::Parser;
-use futures::TryStreamExt;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use indicatif_log_bridge::LogWrapper;
 use log::{error, info};
@@ -12,7 +11,6 @@ use std::{
     path::Path,
     process::exit,
 };
-use tokio::io::BufReader;
 use tokio_stream::StreamExt;
 use tokio_util::io::StreamReader;
 
@@ -105,7 +103,7 @@ async fn main() {
         config.general.name, config.source.version, config.source.release
     );
 
-    let bar = multibar.add(ProgressBar::new(0));
+    let bar = multibar.add(ProgressBar::new(1));
     bar.set_style(sty.clone());
     bar.set_message(format!(
         "Starting {}-{}",
@@ -127,7 +125,9 @@ async fn main() {
     ));
 
     let mut downloaded: u64 = 0;
-    let mut stream = response.bytes_stream();
+    let stream = response.bytes_stream();
+    let mut stream = stream
+        .map(|result| result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err)));
 
     while let Some(item) = stream.next().await {
         let chunk = item.or(Err("Error while downloading file")).unwrap();
@@ -136,10 +136,7 @@ async fn main() {
         bar.set_position(new);
     }
 
-    let reader =
-        StreamReader::new(stream.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)));
-
-    let decoder = async_compression::tokio::bufread::ZstdDecoder::new(BufReader::new(reader));
+    let decoder = async_compression::tokio::bufread::ZstdDecoder::new(StreamReader::new(stream));
 
     bar.finish_with_message(format!(
         "Finished downloading {}-{}",
