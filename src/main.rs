@@ -17,6 +17,14 @@ use tokio_util::io::StreamReader;
 use crate::paths::normalize_path;
 use crate::somebuild_config::Config;
 
+#[macro_export]
+macro_rules! fatal {
+    ( $($var:tt)* ) => {
+        error!($($var)*);
+        exit(1);
+    };
+}
+
 /// A package builder for Some OS
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -56,33 +64,29 @@ async fn main() {
     let input = match fs::canonicalize(input) {
         Ok(input) => input,
         Err(error) => {
-            error!(
+            fatal!(
                 "Failed reading input path: \"{}\"\n\t with error \"{}\"",
                 normalize_path(input).display(),
                 error
             );
-            exit(1);
         }
     };
     let output = match fs::canonicalize(output) {
         Ok(output) => output,
         Err(error) => {
-            error!(
+            fatal!(
                 "Failed reading output path: \"{}\"\n\t with error \"{}\"",
                 normalize_path(output).display(),
                 error
             );
-            exit(1);
         }
     };
 
     if input.is_file() {
-        error!("Input is a file not a directory!");
-        exit(1);
+        fatal!("Input is a file not a directory!");
     }
     if output.is_file() {
-        error!("Output is a file not a directory!");
-        exit(1);
+        fatal!("Output is a file not a directory!");
     }
 
     info!("Input dir:\t{:?}", input);
@@ -145,7 +149,7 @@ async fn main() {
 
     if hash.to_string() != config.source.hash {
         error!(
-            "Wrong hash for \"{}\" specified \n\t\"{}\" found\n\t\"{}\"",
+            "Hash error for \"{}\" specified \n\t \"{}\" found\n\t \"{}\"",
             config.source.url,
             config.source.hash,
             hash.to_string()
