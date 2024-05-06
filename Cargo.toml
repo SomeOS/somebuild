@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 async-compression = { version = "0.4.9", features = ["tokio", "all"] }
+blake3 = "1.5.1"
 clap = { version = "4.5.4", features = ["derive"] }
 env_logger = "0.11.3"
 indicatif = "0.17.8"

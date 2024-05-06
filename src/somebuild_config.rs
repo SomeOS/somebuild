@@ -19,6 +19,7 @@ pub struct ConfigGeneral {
 pub struct ConfigSource {
     pub version: String,
     pub url: String,
+    pub hash: String,
     pub release: i64,
 }
 
@@ -35,10 +36,6 @@ pub struct ConfigBuildOptions {
     pub compiler: String,
     #[serde(default = "_default_true")]
     pub with_lto: bool,
-    #[serde(default = "_default_true")]
-    pub with_pgo: bool,
-    #[serde(default = "_default_true")]
-    pub with_bolt: bool,
 }
 
 fn _default_clang() -> String {

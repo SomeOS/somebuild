@@ -129,19 +129,35 @@ async fn main() {
     let mut stream = stream
         .map(|result| result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err)));
 
+    let mut hasher = blake3::Hasher::new();
+
     while let Some(item) = stream.next().await {
         let chunk = item.or(Err("Error while downloading file")).unwrap();
+
+        hasher.update(&chunk);
+
         let new = min(downloaded + (chunk.len() as u64), total_size);
         downloaded = new;
         bar.set_position(new);
     }
 
-    let decoder = async_compression::tokio::bufread::ZstdDecoder::new(StreamReader::new(stream));
+    let hash = hasher.finalize();
+
+    if hash.to_string() != config.source.hash {
+        error!(
+            "Wrong hash for \"{}\" specified \n\t\"{}\" found\n\t\"{}\"",
+            config.source.url,
+            config.source.hash,
+            hash.to_string()
+        );
+    }
 
     bar.finish_with_message(format!(
         "Finished downloading {}-{}",
         config.general.name, config.source.version
     ));
+
+    let decoder = async_compression::tokio::bufread::ZstdDecoder::new(StreamReader::new(stream));
 
     let mut archive = tokio_tar::Archive::new(decoder);
 
