@@ -128,22 +128,26 @@ async fn main() {
         config.general.name, config.source.version
     ));
 
-    let mut downloaded: u64 = 0;
-    let stream = response.bytes_stream();
-    let mut stream = stream
-        .map(|result| result.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err)));
-
     let mut hasher = blake3::Hasher::new();
+    let mut downloaded: u64 = 0;
 
-    while let Some(item) = stream.next().await {
-        let chunk = item.or(Err("Error while downloading file")).unwrap();
+    let stream = response.bytes_stream().map(|result| {
+        result
+            .inspect(|result| {
+                hasher.update(result);
 
-        hasher.update(&chunk);
+                let new = min(downloaded + (result.len() as u64), total_size);
+                downloaded = new;
+                bar.set_position(new);
+            })
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
+    });
 
-        let new = min(downloaded + (chunk.len() as u64), total_size);
-        downloaded = new;
-        bar.set_position(new);
-    }
+    let decoder = async_compression::tokio::bufread::ZstdDecoder::new(StreamReader::new(stream));
+
+    let mut archive = tokio_tar::Archive::new(decoder);
+
+    archive.unpack(output).await.expect("Cannot unpack archive");
 
     let hash = hasher.finalize();
 
@@ -160,10 +164,4 @@ async fn main() {
         "Finished downloading {}-{}",
         config.general.name, config.source.version
     ));
-
-    let decoder = async_compression::tokio::bufread::ZstdDecoder::new(StreamReader::new(stream));
-
-    let mut archive = tokio_tar::Archive::new(decoder);
-
-    archive.unpack(output).await.expect("Cannot unpack archive");
 }
