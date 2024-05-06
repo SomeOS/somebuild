@@ -114,11 +114,7 @@ async fn main() {
         config.general.name, config.source.version
     ));
 
-    let response = reqwest::Client::new()
-        .get(&config.source.url)
-        .send()
-        .await
-        .unwrap();
+    let response = reqwest::get(&config.source.url).await.unwrap();
 
     let total_size = response.content_length().unwrap_or(0);
 
@@ -149,6 +145,11 @@ async fn main() {
 
     archive.unpack(output).await.expect("Cannot unpack archive");
 
+    bar.finish_with_message(format!(
+        "Finished downloading {}-{}",
+        config.general.name, config.source.version
+    ));
+
     let hash = hasher.finalize();
 
     if hash.to_string() != config.source.hash {
@@ -159,9 +160,4 @@ async fn main() {
             hash.to_string()
         );
     }
-
-    bar.finish_with_message(format!(
-        "Finished downloading {}-{}",
-        config.general.name, config.source.version
-    ));
 }
