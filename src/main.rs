@@ -1,18 +1,20 @@
+mod bars;
 mod paths;
 mod somebuild_config;
+
 use clap::Parser;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use indicatif_log_bridge::LogWrapper;
+use indicatif::ProgressBar;
 use log::{error, info};
 use std::cmp::min;
 use std::path::Path;
 use std::process::exit;
 use tokio::fs::{self, File};
-use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio_stream::StreamExt;
 use tokio_util::io::StreamReader;
 
+use crate::bars::{create_multibar, ProgressStyle};
 use crate::paths::normalize_path;
 use crate::somebuild_config::Config;
 
@@ -39,21 +41,8 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    let logger =
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-            .format_timestamp(None)
-            .format_target(false)
-            .build();
-
-    let multibar: MultiProgress = MultiProgress::new();
-    LogWrapper::new(multibar.clone(), logger)
-        .try_init()
-        .unwrap();
-    let sty = ProgressStyle::with_template(
-        "{spinner:.green} [{elapsed}] {wide_bar:.cyan/blue} {bytes}/{total_bytes} {bytes_per_sec} {msg} ({eta})",
-    )
-    .unwrap()
-    .progress_chars("#>-");
+    let multibar = create_multibar();
+    multibar.println("Running Package Build").unwrap();
 
     let args = Args::parse();
 
@@ -109,7 +98,7 @@ async fn main() {
     );
 
     let bar = multibar.add(ProgressBar::new(1));
-    bar.set_style(sty.clone());
+    bar.set_style(ProgressStyle::Download.value());
     bar.set_message(format!(
         "Starting {}-{}",
         config.general.name, config.source.version
@@ -142,19 +131,10 @@ async fn main() {
 
     let decoder = async_compression::tokio::bufread::ZstdDecoder::new(StreamReader::new(stream));
 
-    let mut archive = tokio_tar::Archive::new(decoder);
-
-    archive
+    tokio_tar::Archive::new(decoder)
         .unpack(&output)
         .await
         .expect("Cannot unpack archive");
-
-    bar.finish_with_message(format!(
-        "Finished downloading {}-{}",
-        config.general.name, config.source.version
-    ));
-
-    multibar.remove(&bar);
 
     let hash = hasher.finalize();
 
@@ -166,40 +146,62 @@ async fn main() {
             hash.to_string()
         );
     }
+    bar.finish_with_message(format!(
+        "Finished downloading {}-{}",
+        config.general.name, config.source.version
+    ));
 
-    info!("Running Configure!");
-    let cmd_output = Command::new("./configure")
+    let bar_build = multibar.add(ProgressBar::new(3));
+    bar_build.set_style(ProgressStyle::Build.value());
+
+    bar_build.set_message(format!(
+        "Setup {}-{}",
+        config.general.name, config.source.version
+    ));
+    Command::new("./configure")
         .current_dir(&output.join("xz-5.4.6"))
         .args([
             "--prefix=/usr",
-            "--docdir=/usr/share/doc/xz-5.4.6",
+            format!(
+                "--docdir=/usr/share/doc/{}-{}",
+                config.general.name, config.source.version
+            )
+            .as_str(),
             "--disable-static",
         ])
         .output()
         .await
         .expect("failed to run configure");
-    io::stdout().write_all(&cmd_output.stdout).await.unwrap();
-    io::stderr().write_all(&cmd_output.stderr).await.unwrap();
+    bar_build.inc(1);
 
-    info!("Running make!");
-    let cmd_output = Command::new("make")
+    bar_build.set_message(format!(
+        "Building {}-{}",
+        config.general.name, config.source.version
+    ));
+    Command::new("make")
         .current_dir(&output.join("xz-5.4.6"))
         .output()
         .await
         .expect("failed to run make");
-    io::stdout().write_all(&cmd_output.stdout).await.unwrap();
-    io::stderr().write_all(&cmd_output.stderr).await.unwrap();
+    bar_build.inc(1);
 
-    info!("Running make install!");
-    let cmd_output = Command::new("make")
+    bar_build.set_message(format!(
+        "Packaging {}-{}",
+        config.general.name, config.source.version
+    ));
+    Command::new("make")
         .current_dir(&output.join("xz-5.4.6"))
         .args([
-            "DESTDIR=".to_owned() + output.to_str().unwrap(),
-            "install".to_string(),
+            format!("DESTDIR={}", output.to_str().unwrap()).as_str(),
+            "install",
         ])
         .output()
         .await
         .expect("failed to run make");
-    io::stdout().write_all(&cmd_output.stdout).await.unwrap();
-    io::stderr().write_all(&cmd_output.stderr).await.unwrap();
+    bar_build.inc(1);
+
+    bar_build.finish_with_message(format!(
+        "Finished building {}-{}",
+        config.general.name, config.source.version
+    ));
 }
