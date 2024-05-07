@@ -11,8 +11,12 @@ licences = [
 [source]
 version = "5.4.6"
 url = "https://github.com/tukaani-project/xz/releases/download/v5.4.6/xz-5.4.6.tar.zst"
-hash = "3e9971d6d6e9d7a411b2e9414c181a5f904f860f149591b6ac55628e1aa2263"
+hash = "3e9971d6d6e9d7a411b2e9414c181a5f904f860f149591b6ac55628e1aa2263d"
 release = 0
+
+[cache]
+url = ""
+hash = ""
 
 [build.options]
 compiler = "clang"
@@ -20,7 +24,7 @@ with_lto = true
 
 [build]
 setup = """
-    %configure --disable-static --disable-rpath
+    %configure --disable-static
 """
 build = """
     %make

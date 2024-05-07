@@ -21,3 +21,5 @@ Cargo.lock
 
 # Package build output
 /out
+
+.vscode/

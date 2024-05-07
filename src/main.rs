@@ -4,13 +4,12 @@ use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use indicatif_log_bridge::LogWrapper;
 use log::{error, info};
-use std::{
-    cmp::min,
-    fs::{self, File},
-    io::Read,
-    path::Path,
-    process::exit,
-};
+use std::cmp::min;
+use std::path::Path;
+use std::process::exit;
+use tokio::fs::{self, File};
+use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
+use tokio::process::Command;
 use tokio_stream::StreamExt;
 use tokio_util::io::StreamReader;
 
@@ -51,7 +50,7 @@ async fn main() {
         .try_init()
         .unwrap();
     let sty = ProgressStyle::with_template(
-        "{spinner:.green} [{elapsed}] {wide_bar:.cyan/blue} {bytes}/{total_bytes} {msg} ({eta})",
+        "{spinner:.green} [{elapsed}] {wide_bar:.cyan/blue} {bytes}/{total_bytes} {bytes_per_sec} {msg} ({eta})",
     )
     .unwrap()
     .progress_chars("#>-");
@@ -61,7 +60,7 @@ async fn main() {
     let input = Path::new(&args.input);
     let output = Path::new(&args.output);
 
-    let input = match fs::canonicalize(input) {
+    let input = match fs::canonicalize(input).await {
         Ok(input) => input,
         Err(error) => {
             fatal!(
@@ -71,7 +70,7 @@ async fn main() {
             );
         }
     };
-    let output = match fs::canonicalize(output) {
+    let output = match fs::canonicalize(output).await {
         Ok(output) => output,
         Err(error) => {
             fatal!(
@@ -92,12 +91,14 @@ async fn main() {
     info!("Input dir:\t{:?}", input);
     info!("Output dir:\t{:?}", output);
 
-    let mut somebuild_file =
-        File::open(input.join("SOMEBUILD.toml")).expect("Failed to open SOMEBUILD.toml!");
+    let mut somebuild_file = File::open(input.join("SOMEBUILD.toml"))
+        .await
+        .expect("Failed to open SOMEBUILD.toml!");
     let mut config_str = String::new();
 
     somebuild_file
         .read_to_string(&mut config_str)
+        .await
         .expect("Failed to read SOMEBUILD.toml!");
 
     let config: Config = toml::from_str(&config_str).expect("Failed to parse SOMEBUILD.toml!");
@@ -143,12 +144,17 @@ async fn main() {
 
     let mut archive = tokio_tar::Archive::new(decoder);
 
-    archive.unpack(output).await.expect("Cannot unpack archive");
+    archive
+        .unpack(&output)
+        .await
+        .expect("Cannot unpack archive");
 
     bar.finish_with_message(format!(
         "Finished downloading {}-{}",
         config.general.name, config.source.version
     ));
+
+    multibar.remove(&bar);
 
     let hash = hasher.finalize();
 
@@ -160,4 +166,40 @@ async fn main() {
             hash.to_string()
         );
     }
+
+    info!("Running Configure!");
+    let cmd_output = Command::new("./configure")
+        .current_dir(&output.join("xz-5.4.6"))
+        .args([
+            "--prefix=/usr",
+            "--docdir=/usr/share/doc/xz-5.4.6",
+            "--disable-static",
+        ])
+        .output()
+        .await
+        .expect("failed to run configure");
+    io::stdout().write_all(&cmd_output.stdout).await.unwrap();
+    io::stderr().write_all(&cmd_output.stderr).await.unwrap();
+
+    info!("Running make!");
+    let cmd_output = Command::new("make")
+        .current_dir(&output.join("xz-5.4.6"))
+        .output()
+        .await
+        .expect("failed to run make");
+    io::stdout().write_all(&cmd_output.stdout).await.unwrap();
+    io::stderr().write_all(&cmd_output.stderr).await.unwrap();
+
+    info!("Running make install!");
+    let cmd_output = Command::new("make")
+        .current_dir(&output.join("xz-5.4.6"))
+        .args([
+            "DESTDIR=".to_owned() + output.to_str().unwrap(),
+            "install".to_string(),
+        ])
+        .output()
+        .await
+        .expect("failed to run make");
+    io::stdout().write_all(&cmd_output.stdout).await.unwrap();
+    io::stderr().write_all(&cmd_output.stderr).await.unwrap();
 }
