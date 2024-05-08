@@ -11,7 +11,6 @@ use std::path::Path;
 use std::process::exit;
 use tokio::fs::{self, File};
 use tokio::io::AsyncReadExt;
-use tokio::process::Command;
 use tokio_stream::StreamExt;
 use tokio_util::io::StreamReader;
 use url::Url;
@@ -187,15 +186,13 @@ async fn main() {
     );
 
     let mut options = ScriptOptions::new();
-
     options.working_directory = Some(output.join(&file_name));
 
     let (code, out, error) = run_script::run_script!(configure_cmd, options).unwrap();
-
     if code != 0 {
-        error!("Configure failed with code: {}", code);
-        error!("Configure failed with error: {}", error);
-        fatal!("Configure failed with output: {}", out);
+        error!("Setup failed with code: {}", code);
+        error!("Setup failed with error: {}", error);
+        fatal!("Setup failed with output: {}", out);
     }
     bar_build.inc(1);
 
@@ -203,17 +200,17 @@ async fn main() {
         "Building {}-{}",
         config.general.name, config.source.version
     ));
-    let make = Command::new("make")
-        .current_dir(&output.join(&file_name))
-        .spawn()
-        .expect("failed to start build")
-        .wait()
-        .await
-        .expect("failed to run build");
 
-    if !make.success() {
-        error!("Build failed with error: {}", make.code().unwrap());
-        fatal!("Build command: {}", configure_cmd);
+    let make_cmd = config.build.setup.replace("%make", "make");
+
+    let mut options = ScriptOptions::new();
+    options.working_directory = Some(output.join(&file_name));
+
+    let (code, out, error) = run_script::run_script!(make_cmd, options).unwrap();
+    if code != 0 {
+        error!("Build failed with code: {}", code);
+        error!("Build failed with error: {}", error);
+        fatal!("Build failed with output: {}", out);
     }
     bar_build.inc(1);
 
@@ -221,24 +218,20 @@ async fn main() {
         "Packaging {}-{}",
         config.general.name, config.source.version
     ));
-    let make_install = Command::new("make")
-        .current_dir(&output.join(&file_name))
-        .args([
-            format!("DESTDIR={}", output.to_str().unwrap()).as_str(),
-            "install",
-        ])
-        .spawn()
-        .expect("failed to start install")
-        .wait()
-        .await
-        .expect("failed to run install");
 
-    if !make_install.success() {
-        error!(
-            "Install failed with error: {}",
-            make_install.code().unwrap()
-        );
-        fatal!("Install command: {}", configure_cmd);
+    let make_install_cmd = config.build.setup.replace(
+        "%make",
+        format!("make DESTDIR={} install", output.to_str().unwrap()).trim(),
+    );
+
+    let mut options = ScriptOptions::new();
+    options.working_directory = Some(output.join(&file_name));
+
+    let (code, out, error) = run_script::run_script!(make_install_cmd, options).unwrap();
+    if code != 0 {
+        error!("Packaging failed with code: {}", code);
+        error!("Packaging failed with error: {}", error);
+        fatal!("Packaging failed with output: {}", out);
     }
     bar_build.inc(1);
 
