@@ -5,6 +5,7 @@ mod somebuild_config;
 use clap::Parser;
 use indicatif::ProgressBar;
 use log::{error, info};
+use run_script::ScriptOptions;
 use std::cmp::min;
 use std::path::Path;
 use std::process::exit;
@@ -13,6 +14,7 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio_stream::StreamExt;
 use tokio_util::io::StreamReader;
+use url::Url;
 
 use crate::bars::{create_multibar, ProgressStyle};
 use crate::paths::normalize_path;
@@ -104,6 +106,8 @@ async fn main() {
         config.general.name, config.source.version
     ));
 
+    bar.tick();
+
     let response = reqwest::get(&config.source.url).await.unwrap();
 
     let total_size = response.content_length().unwrap_or(0);
@@ -151,53 +155,91 @@ async fn main() {
         config.general.name, config.source.version
     ));
 
+    let url = Url::parse(&config.source.url).unwrap();
+    let file_name = url.path_segments().unwrap().last().unwrap();
+
+    let mut file_name: Vec<&str> = file_name.split('.').collect();
+
+    file_name.pop();
+    file_name.pop();
+
+    let file_name = file_name.join(".");
+
+    info!("Extraction Folder: {}", file_name);
+
     let bar_build = multibar.add(ProgressBar::new(3));
     bar_build.set_style(ProgressStyle::Build.value());
+
+    bar_build.tick();
 
     bar_build.set_message(format!(
         "Setup {}-{}",
         config.general.name, config.source.version
     ));
-    Command::new("./configure")
-        .current_dir(&output.join("xz-5.4.6"))
-        .args([
-            "--prefix=/usr",
-            format!(
-                "--docdir=/usr/share/doc/{}-{}",
-                config.general.name, config.source.version
-            )
-            .as_str(),
-            "--disable-static",
-        ])
-        .output()
-        .await
-        .expect("failed to run configure");
+
+    let configure_cmd = config.build.setup.replace(
+        "%configure",
+        format!(
+            "./configure --prefix=/usr --docdir=/usr/share/doc/{}-{}",
+            config.general.name, config.source.version
+        )
+        .trim(),
+    );
+
+    let mut options = ScriptOptions::new();
+
+    options.working_directory = Some(output.join(&file_name));
+
+    let (code, out, error) = run_script::run_script!(configure_cmd, options).unwrap();
+
+    if code != 0 {
+        error!("Configure failed with code: {}", code);
+        error!("Configure failed with error: {}", error);
+        fatal!("Configure failed with output: {}", out);
+    }
     bar_build.inc(1);
 
     bar_build.set_message(format!(
         "Building {}-{}",
         config.general.name, config.source.version
     ));
-    Command::new("make")
-        .current_dir(&output.join("xz-5.4.6"))
-        .output()
+    let make = Command::new("make")
+        .current_dir(&output.join(&file_name))
+        .spawn()
+        .expect("failed to start build")
+        .wait()
         .await
-        .expect("failed to run make");
+        .expect("failed to run build");
+
+    if !make.success() {
+        error!("Build failed with error: {}", make.code().unwrap());
+        fatal!("Build command: {}", configure_cmd);
+    }
     bar_build.inc(1);
 
     bar_build.set_message(format!(
         "Packaging {}-{}",
         config.general.name, config.source.version
     ));
-    Command::new("make")
-        .current_dir(&output.join("xz-5.4.6"))
+    let make_install = Command::new("make")
+        .current_dir(&output.join(&file_name))
         .args([
             format!("DESTDIR={}", output.to_str().unwrap()).as_str(),
             "install",
         ])
-        .output()
+        .spawn()
+        .expect("failed to start install")
+        .wait()
         .await
-        .expect("failed to run make");
+        .expect("failed to run install");
+
+    if !make_install.success() {
+        error!(
+            "Install failed with error: {}",
+            make_install.code().unwrap()
+        );
+        fatal!("Install command: {}", configure_cmd);
+    }
     bar_build.inc(1);
 
     bar_build.finish_with_message(format!(
