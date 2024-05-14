@@ -27,6 +27,7 @@ pub struct ConfigSource {
 pub struct ConfigBuild {
     pub setup: String,
     pub build: String,
+    pub install: String,
     pub options: ConfigBuildOptions,
 }
 

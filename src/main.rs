@@ -190,6 +190,7 @@ async fn main() {
 
     let (code, out, error) = run_script::run_script!(configure_cmd, options).unwrap();
     if code != 0 {
+        error!("Setup failed with command: {}", configure_cmd);
         error!("Setup failed with code: {}", code);
         error!("Setup failed with error: {}", error);
         fatal!("Setup failed with output: {}", out);
@@ -201,13 +202,14 @@ async fn main() {
         config.general.name, config.source.version
     ));
 
-    let make_cmd = config.build.setup.replace("%make", "make");
+    let make_cmd = config.build.build.replace("%make", "make");
 
     let mut options = ScriptOptions::new();
     options.working_directory = Some(output.join(&file_name));
 
     let (code, out, error) = run_script::run_script!(make_cmd, options).unwrap();
     if code != 0 {
+        error!("Build failed with command: {}", make_cmd);
         error!("Build failed with code: {}", code);
         error!("Build failed with error: {}", error);
         fatal!("Build failed with output: {}", out);
@@ -219,8 +221,8 @@ async fn main() {
         config.general.name, config.source.version
     ));
 
-    let make_install_cmd = config.build.setup.replace(
-        "%make",
+    let make_install_cmd = config.build.install.replace(
+        "%make_install",
         format!("make DESTDIR={} install", output.to_str().unwrap()).trim(),
     );
 
@@ -229,6 +231,7 @@ async fn main() {
 
     let (code, out, error) = run_script::run_script!(make_install_cmd, options).unwrap();
     if code != 0 {
+        error!("Packaging failed with command: {}", make_install_cmd);
         error!("Packaging failed with code: {}", code);
         error!("Packaging failed with error: {}", error);
         fatal!("Packaging failed with output: {}", out);
