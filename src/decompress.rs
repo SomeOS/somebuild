@@ -15,6 +15,8 @@ pub async fn decompress(
 ) -> String {
     let mut file_name = String::from(file_name.trim());
 
+    // TODO: create a more elegant and efficent way to determine compression algo and file name
+
     if file_name.ends_with(".tar.zst") {
         let decoder =
             async_compression::tokio::bufread::ZstdDecoder::new(StreamReader::new(stream));
