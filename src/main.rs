@@ -43,7 +43,6 @@ struct Args {
 #[tokio::main]
 async fn main() {
     let multibar = create_multibar();
-    multibar.println("Running Package Build").unwrap();
 
     let args = Args::parse();
 
@@ -123,11 +122,12 @@ async fn main() {
     let stream = response.bytes_stream().map(|result| {
         result
             .inspect(|result| {
-                hasher.update(result);
-
                 let new = min(downloaded + (result.len() as u64), total_size);
                 downloaded = new;
                 bar.set_position(new);
+            })
+            .inspect(|result| {
+                hasher.update(result);
             })
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
     });
@@ -154,6 +154,16 @@ async fn main() {
         config.general.name, config.source.version
     ));
 
+    let bar_build = multibar.add(ProgressBar::new(3));
+    bar_build.set_style(ProgressStyle::Build.value());
+
+    bar_build.set_message(format!(
+        "Setup {}-{}",
+        config.general.name, config.source.version
+    ));
+
+    bar_build.tick();
+
     let url = Url::parse(&config.source.url).unwrap();
     let file_name = url.path_segments().unwrap().last().unwrap();
 
@@ -165,16 +175,6 @@ async fn main() {
     let file_name = file_name.join(".");
 
     info!("Extraction Folder: {}", file_name);
-
-    let bar_build = multibar.add(ProgressBar::new(3));
-    bar_build.set_style(ProgressStyle::Build.value());
-
-    bar_build.tick();
-
-    bar_build.set_message(format!(
-        "Setup {}-{}",
-        config.general.name, config.source.version
-    ));
 
     let configure_cmd = config.build.setup.replace(
         "%configure",
@@ -236,7 +236,6 @@ async fn main() {
         error!("Packaging failed with error: {}", error);
         fatal!("Packaging failed with output: {}", out);
     }
-    bar_build.inc(1);
 
     bar_build.finish_with_message(format!(
         "Finished building {}-{}",
