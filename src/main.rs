@@ -1,4 +1,5 @@
 mod bars;
+mod decompress;
 mod paths;
 mod somebuild_config;
 
@@ -12,10 +13,10 @@ use std::process::exit;
 use tokio::fs::{self, File};
 use tokio::io::AsyncReadExt;
 use tokio_stream::StreamExt;
-use tokio_util::io::StreamReader;
 use url::Url;
 
 use crate::bars::{create_multibar, ProgressStyle};
+use crate::decompress::decompress;
 use crate::paths::normalize_path;
 use crate::somebuild_config::Config;
 
@@ -132,12 +133,10 @@ async fn main() {
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
     });
 
-    let decoder = async_compression::tokio::bufread::ZstdDecoder::new(StreamReader::new(stream));
+    let url = Url::parse(&config.source.url).unwrap();
+    let file_name = url.path_segments().unwrap().last().unwrap();
 
-    tokio_tar::Archive::new(decoder)
-        .unpack(&output)
-        .await
-        .expect("Cannot unpack archive");
+    let file_name = decompress(stream, &output, file_name).await;
 
     let hash = hasher.finalize();
 
@@ -164,29 +163,24 @@ async fn main() {
 
     bar_build.tick();
 
-    let url = Url::parse(&config.source.url).unwrap();
-    let file_name = url.path_segments().unwrap().last().unwrap();
-
-    let mut file_name: Vec<&str> = file_name.split('.').collect();
-
-    file_name.pop();
-    file_name.pop();
-
-    let file_name = file_name.join(".");
-
     info!("Extraction Folder: {}", file_name);
 
-    let configure_cmd = config.build.setup.replace(
-        "%configure",
-        format!(
-            "./configure --prefix=/usr --docdir=/usr/share/doc/{}-{}",
-            config.general.name, config.source.version
+    let configure_cmd = config
+        .build
+        .setup
+        .replace(
+            "%configure",
+            format!(
+                "./configure --prefix=/usr --docdir=/usr/share/doc/{}-{}",
+                config.general.name, config.source.version
+            )
+            .trim(),
         )
-        .trim(),
-    );
+        .trim()
+        .to_string();
 
     let mut options = ScriptOptions::new();
-    options.working_directory = Some(output.join(&file_name));
+    options.working_directory = Some(output.join(file_name));
 
     let (code, out, error) = run_script::run_script!(configure_cmd, options).unwrap();
     if code != 0 {
@@ -202,10 +196,15 @@ async fn main() {
         config.general.name, config.source.version
     ));
 
-    let make_cmd = config.build.build.replace("%make", "make");
+    let make_cmd = config
+        .build
+        .build
+        .replace("%make", "make")
+        .trim()
+        .to_string();
 
     let mut options = ScriptOptions::new();
-    options.working_directory = Some(output.join(&file_name));
+    options.working_directory = Some(output.join(file_name));
 
     let (code, out, error) = run_script::run_script!(make_cmd, options).unwrap();
     if code != 0 {
@@ -221,13 +220,18 @@ async fn main() {
         config.general.name, config.source.version
     ));
 
-    let make_install_cmd = config.build.install.replace(
-        "%make_install",
-        format!("make DESTDIR={} install", output.to_str().unwrap()).trim(),
-    );
+    let make_install_cmd = config
+        .build
+        .install
+        .replace(
+            "%make_install",
+            format!("make DESTDIR={} install", output.to_str().unwrap()).trim(),
+        )
+        .trim()
+        .to_string();
 
     let mut options = ScriptOptions::new();
-    options.working_directory = Some(output.join(&file_name));
+    options.working_directory = Some(output.join(file_name));
 
     let (code, out, error) = run_script::run_script!(make_install_cmd, options).unwrap();
     if code != 0 {
