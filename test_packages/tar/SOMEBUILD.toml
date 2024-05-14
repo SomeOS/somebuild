@@ -1,0 +1,32 @@
+[general]
+name = "tar"
+description = "GNU Tar"
+homepage = "https://www.gnu.org/software/tar/"
+licences = [
+    "GPL-3.0-or-later"
+]
+
+[source]
+version = "1.35"
+url = "https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz"
+hash = "55e3853752c56a607ae5dbc9e9190fe5d3f7599b76bb80abe0edba36d712c36b"
+release = 0
+
+[cache]
+url = ""
+hash = ""
+
+[build.options]
+compiler = "clang"
+with_lto = true
+
+[build]
+setup = """
+    %configure
+"""
+build = """
+    %make
+"""
+install = """
+    %make_install
+"""

@@ -93,6 +93,8 @@ async fn main() {
 
     let config: Config = toml::from_str(&config_str).expect("Failed to parse SOMEBUILD.toml!");
 
+    info!("Download Url:\t{}", config.source.url);
+
     info!(
         "Package:\t{}-{}_{}",
         config.general.name, config.source.version, config.source.release
@@ -133,25 +135,31 @@ async fn main() {
             .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
     });
 
-    let url = Url::parse(&config.source.url).unwrap();
-    let file_name = url.path_segments().unwrap().last().unwrap();
+    let file_name = decompress(
+        stream,
+        &output,
+        Url::parse(&config.source.url)
+            .unwrap()
+            .path_segments()
+            .unwrap()
+            .last()
+            .unwrap(),
+    )
+    .await;
+    let file_name = file_name.as_str();
 
-    let file_name = decompress(stream, &output, file_name).await;
+    info!("Extract Folder:\t{}", file_name);
 
     let hash = hasher.finalize();
 
     if hash.to_string() != config.source.hash {
-        error!(
+        fatal!(
             "Hash error for \"{}\" specified \n\t \"{}\" found\n\t \"{}\"",
             config.source.url,
             config.source.hash,
             hash.to_string()
         );
     }
-    bar.finish_with_message(format!(
-        "Finished downloading {}-{}",
-        config.general.name, config.source.version
-    ));
 
     let bar_build = multibar.add(ProgressBar::new(3));
     bar_build.set_style(ProgressStyle::Build.value());
@@ -161,21 +169,17 @@ async fn main() {
         config.general.name, config.source.version
     ));
 
-    bar_build.tick();
+    bar.finish_with_message(format!(
+        "Finished downloading {}-{}",
+        config.general.name, config.source.version
+    ));
 
-    info!("Extraction Folder: {}", file_name);
+    bar_build.tick();
 
     let configure_cmd = config
         .build
         .setup
-        .replace(
-            "%configure",
-            format!(
-                "./configure --prefix=/usr --docdir=/usr/share/doc/{}-{}",
-                config.general.name, config.source.version
-            )
-            .trim(),
-        )
+        .replace("%configure", "./configure --prefix=/usr")
         .trim()
         .to_string();
 

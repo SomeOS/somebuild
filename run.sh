@@ -1,3 +1,3 @@
 #!/bin/sh
 
-cargo run -- --input ./test_packages/xz/ --output ./out/xz/
+cargo run -- --input ./test_packages/tar/ --output ./out/tar/
