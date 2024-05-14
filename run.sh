@@ -1,3 +1,3 @@
 #!/bin/sh
 
-cargo run -- --input ./test_packages/bash/ --output ./out/bash/
+cargo run -- --input ./test_packages/elfutils/ --output ./out/elfutils/

@@ -1,0 +1,32 @@
+[general]
+name = "Elfutils"
+description = "Elfutils"
+homepage = "https://sourceware.org/elfutils/"
+licences = [
+    "GPL-2.0-or-later"
+]
+
+[source]
+version = "0.190"
+url = "https://sourceware.org/ftp/elfutils/0.190/elfutils-0.190.tar.bz2"
+hash = "f3449fb0ddb3c114f4e24689ab505542f0bad9ee84f92ff8beced7e1ccbf57c6"
+release = 0
+
+[cache]
+url = ""
+hash = ""
+
+[build.options]
+compiler = "clang"
+with_lto = true
+
+[build]
+setup = """
+    %configure --disable-static --disable-debuginfod --enable-libdebuginfod
+"""
+build = """
+    %make
+"""
+install = """
+    %make_install -C libelf
+"""
