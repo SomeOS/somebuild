@@ -1,0 +1,32 @@
+[general]
+name = "bash"
+description = "GNU Bash"
+homepage = "hhttps://www.gnu.org/software/bash/"
+licences = [
+    "GPL-3.0-or-later"
+]
+
+[source]
+version = "5.2.21"
+url = "https://ftp.gnu.org/gnu/bash/bash-5.2.21.tar.gz"
+hash = "7188914e18064c2b7c279af624cb74b3d835844073c0e28bae2312c68a34276e"
+release = 0
+
+[cache]
+url = ""
+hash = ""
+
+[build.options]
+compiler = "clang"
+with_lto = true
+
+[build]
+setup = """
+    %configure --without-bash-malloc
+"""
+build = """
+    %make
+"""
+install = """
+    %make_install
+"""

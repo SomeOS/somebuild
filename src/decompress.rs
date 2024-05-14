@@ -37,8 +37,19 @@ pub async fn decompress(
             .await
             .expect("Cannot unpack archive");
 
-        // &file_name[..".tar.xz".len()]
         file_name.truncate(file_name.len() - ".tar.xz".len())
+    } else if file_name.ends_with(".tar.gz") {
+        let decoder =
+            async_compression::tokio::bufread::GzipDecoder::new(StreamReader::new(stream));
+
+        pin!(decoder);
+
+        tokio_tar::Archive::new(decoder)
+            .unpack(&output)
+            .await
+            .expect("Cannot unpack archive");
+
+        file_name.truncate(file_name.len() - ".tar.gz".len())
     } else {
         fatal!("Extension of \"{}\" not supported!", file_name);
     }
