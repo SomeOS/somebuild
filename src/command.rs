@@ -4,7 +4,7 @@ use run_script::ScriptOptions;
 
 use crate::log::*;
 
-pub fn run(command: &str, path: PathBuf) {
+pub async fn run(command: &str, path: PathBuf) {
     let configure_cmd = command
         .replace("%configure", "./configure --prefix=/usr")
         .replace(

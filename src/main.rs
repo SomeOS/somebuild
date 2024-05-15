@@ -5,19 +5,18 @@ mod downloader;
 mod log;
 mod paths;
 mod somebuild_config;
+mod somebuild_parser;
 
 use clap::Parser;
 use indicatif::ProgressBar;
-use tokio::io::AsyncReadExt;
 
 use std::path::Path;
-use tokio::fs::{self, File};
+use tokio::fs;
 
 use crate::bars::{create_multibar, ProgressStyle};
 use crate::downloader::Download;
 use crate::log::*;
 use crate::paths::normalize_path;
-use crate::somebuild_config::Config;
 
 /// A package builder for Some OS
 #[derive(Parser, Debug)]
@@ -72,17 +71,7 @@ async fn main() {
     info!("Input dir:\t{:?}", input);
     info!("Output dir:\t{:?}", output);
 
-    let mut somebuild_file = File::open(input.join("SOMEBUILD.toml"))
-        .await
-        .expect("Failed to open SOMEBUILD.toml!");
-    let mut config_str = String::new();
-
-    somebuild_file
-        .read_to_string(&mut config_str)
-        .await
-        .expect("Failed to read SOMEBUILD.toml!");
-
-    let config: Config = toml::from_str(&config_str).expect("Failed to parse SOMEBUILD.toml!");
+    let config = somebuild_parser::parse(&input).await;
 
     info!("Download Url:\t{}", config.source.url);
 
@@ -104,21 +93,21 @@ async fn main() {
         "Setup {}-{}",
         config.general.name, config.source.version
     ));
-    command::run(&config.build.setup, output.join(&down.file_name));
+    command::run(&config.build.setup, output.join(&down.file_name)).await;
     bar_build.inc(1);
 
     bar_build.set_message(format!(
         "Building {}-{}",
         config.general.name, config.source.version
     ));
-    command::run(&config.build.build, output.join(&down.file_name));
+    command::run(&config.build.build, output.join(&down.file_name)).await;
     bar_build.inc(1);
 
     bar_build.set_message(format!(
         "Packaging {}-{}",
         config.general.name, config.source.version
     ));
-    command::run(&config.build.install, output.join(&down.file_name));
+    command::run(&config.build.install, output.join(&down.file_name)).await;
     bar_build.inc(1);
 
     bar_build.finish_with_message(format!(
