@@ -1,4 +1,5 @@
 mod bars;
+mod command;
 mod decompress;
 mod downloader;
 mod log;
@@ -7,12 +8,10 @@ mod somebuild_config;
 
 use clap::Parser;
 use indicatif::ProgressBar;
-
-use run_script::ScriptOptions;
-use std::path::Path;
-use std::process::exit;
-use tokio::fs::{self, File};
 use tokio::io::AsyncReadExt;
+
+use std::path::Path;
+use tokio::fs::{self, File};
 
 use crate::bars::{create_multibar, ProgressStyle};
 use crate::downloader::Download;
@@ -98,84 +97,29 @@ async fn main() {
 
     let bar_build = multibar.add(ProgressBar::new(3));
     bar_build.set_style(ProgressStyle::Build.value());
+    bar_build.tick();
+    down.finish();
 
     bar_build.set_message(format!(
         "Setup {}-{}",
         config.general.name, config.source.version
     ));
-
-    bar_build.tick();
-
-    down.finish();
-
-    let configure_cmd = config
-        .build
-        .setup
-        .replace("%configure", "./configure --prefix=/usr")
-        .trim()
-        .to_string();
-
-    let mut options = ScriptOptions::new();
-    options.working_directory = Some(output.join(&down.file_name));
-
-    let (code, out, error) = run_script::run_script!(configure_cmd, options).unwrap();
-    if code != 0 {
-        error!("Setup failed with command: {}", configure_cmd);
-        error!("Setup failed with code: {}", code);
-        error!("Setup failed with error: {}", error);
-        fatal!("Setup failed with output: {}", out);
-    }
+    command::run(&config.build.setup, output.join(&down.file_name));
     bar_build.inc(1);
 
     bar_build.set_message(format!(
         "Building {}-{}",
         config.general.name, config.source.version
     ));
-
-    let make_cmd = config
-        .build
-        .build
-        .replace("%make", "make")
-        .trim()
-        .to_string();
-
-    let mut options = ScriptOptions::new();
-    options.working_directory = Some(output.join(&down.file_name));
-
-    let (code, out, error) = run_script::run_script!(make_cmd, options).unwrap();
-    if code != 0 {
-        error!("Build failed with command: {}", make_cmd);
-        error!("Build failed with code: {}", code);
-        error!("Build failed with error: {}", error);
-        fatal!("Build failed with output: {}", out);
-    }
+    command::run(&config.build.build, output.join(&down.file_name));
     bar_build.inc(1);
 
     bar_build.set_message(format!(
         "Packaging {}-{}",
         config.general.name, config.source.version
     ));
-
-    let make_install_cmd = config
-        .build
-        .install
-        .replace(
-            "%make_install",
-            format!("make DESTDIR={} install", output.to_str().unwrap()).trim(),
-        )
-        .trim()
-        .to_string();
-
-    let mut options = ScriptOptions::new();
-    options.working_directory = Some(output.join(&down.file_name));
-
-    let (code, out, error) = run_script::run_script!(make_install_cmd, options).unwrap();
-    if code != 0 {
-        error!("Packaging failed with command: {}", make_install_cmd);
-        error!("Packaging failed with code: {}", code);
-        error!("Packaging failed with error: {}", error);
-        fatal!("Packaging failed with output: {}", out);
-    }
+    command::run(&config.build.install, output.join(&down.file_name));
+    bar_build.inc(1);
 
     bar_build.finish_with_message(format!(
         "Finished building {}-{}",

@@ -10,8 +10,6 @@ pub async fn decompress(
     output: &Path,
     extension: &str,
 ) {
-    // TODO: create a more elegant and efficent way to determine compression algo and file name
-
     match extension {
         ".tar.zst" => {
             let decoder =
