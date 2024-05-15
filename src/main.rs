@@ -1,32 +1,24 @@
 mod bars;
 mod decompress;
+mod downloader;
+mod log;
 mod paths;
 mod somebuild_config;
 
 use clap::Parser;
 use indicatif::ProgressBar;
-use log::{error, info};
+
 use run_script::ScriptOptions;
-use std::cmp::min;
 use std::path::Path;
 use std::process::exit;
 use tokio::fs::{self, File};
 use tokio::io::AsyncReadExt;
-use tokio_stream::StreamExt;
-use url::Url;
 
 use crate::bars::{create_multibar, ProgressStyle};
-use crate::decompress::decompress;
+use crate::downloader::Download;
+use crate::log::*;
 use crate::paths::normalize_path;
 use crate::somebuild_config::Config;
-
-#[macro_export]
-macro_rules! fatal {
-    ( $($var:tt)* ) => {
-        error!($($var)*);
-        exit(1);
-    };
-}
 
 /// A package builder for Some OS
 #[derive(Parser, Debug)]
@@ -100,66 +92,9 @@ async fn main() {
         config.general.name, config.source.version, config.source.release
     );
 
-    let bar = multibar.add(ProgressBar::new(1));
-    bar.set_style(ProgressStyle::Download.value());
-    bar.set_message(format!(
-        "Starting {}-{}",
-        config.general.name, config.source.version
-    ));
+    let down = Download::new(&multibar, &config, &output);
 
-    bar.tick();
-
-    let response = reqwest::get(&config.source.url).await.unwrap();
-
-    let total_size = response.content_length().unwrap_or(0);
-
-    bar.set_length(total_size);
-    bar.set_message(format!(
-        "Downloading {}-{}",
-        config.general.name, config.source.version
-    ));
-
-    let mut hasher = blake3::Hasher::new();
-    let mut downloaded: u64 = 0;
-
-    let stream = response.bytes_stream().map(|result| {
-        result
-            .inspect(|result| {
-                let new = min(downloaded + (result.len() as u64), total_size);
-                downloaded = new;
-                bar.set_position(new);
-            })
-            .inspect(|result| {
-                hasher.update(result);
-            })
-            .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-    });
-
-    let file_name = decompress(
-        stream,
-        &output,
-        Url::parse(&config.source.url)
-            .unwrap()
-            .path_segments()
-            .unwrap()
-            .last()
-            .unwrap(),
-    )
-    .await;
-    let file_name = file_name.as_str();
-
-    info!("Extract Folder:\t{}", file_name);
-
-    let hash = hasher.finalize();
-
-    if hash.to_string() != config.source.hash {
-        fatal!(
-            "Hash error for \"{}\" specified \n\t \"{}\" found\n\t \"{}\"",
-            config.source.url,
-            config.source.hash,
-            hash.to_string()
-        );
-    }
+    down.download().await;
 
     let bar_build = multibar.add(ProgressBar::new(3));
     bar_build.set_style(ProgressStyle::Build.value());
@@ -169,12 +104,9 @@ async fn main() {
         config.general.name, config.source.version
     ));
 
-    bar.finish_with_message(format!(
-        "Finished downloading {}-{}",
-        config.general.name, config.source.version
-    ));
-
     bar_build.tick();
+
+    down.finish();
 
     let configure_cmd = config
         .build
@@ -184,7 +116,7 @@ async fn main() {
         .to_string();
 
     let mut options = ScriptOptions::new();
-    options.working_directory = Some(output.join(file_name));
+    options.working_directory = Some(output.join(&down.file_name));
 
     let (code, out, error) = run_script::run_script!(configure_cmd, options).unwrap();
     if code != 0 {
@@ -208,7 +140,7 @@ async fn main() {
         .to_string();
 
     let mut options = ScriptOptions::new();
-    options.working_directory = Some(output.join(file_name));
+    options.working_directory = Some(output.join(&down.file_name));
 
     let (code, out, error) = run_script::run_script!(make_cmd, options).unwrap();
     if code != 0 {
@@ -235,7 +167,7 @@ async fn main() {
         .to_string();
 
     let mut options = ScriptOptions::new();
-    options.working_directory = Some(output.join(file_name));
+    options.working_directory = Some(output.join(&down.file_name));
 
     let (code, out, error) = run_script::run_script!(make_install_cmd, options).unwrap();
     if code != 0 {
